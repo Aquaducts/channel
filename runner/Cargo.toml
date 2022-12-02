@@ -1,0 +1,40 @@
+[package]
+name = "runner"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.22", default-features = false, features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "fs",
+    "io-util",
+] }
+git2 = "0.15.0"
+anyhow = "1.0.66"
+serde_yaml = "0.9.14"
+serde_json = "*"
+serde = { version = "1.0.147", features = ["derive"] }
+hyper = { version = "0.14.23", features = [
+    "tcp",
+    "http1",
+    "http2",
+    "stream",
+    "server",
+] }
+haikunator = "0.1.2"
+notify = { version = "5.0.0", features = ["serde"] }
+capnp = "0.15.1"
+directories = "4.0.1"
+async-trait = "0.1.58"
+tokio-tungstenite = "0.17.2"
+futures-util = "*"
+futures-channel = "*"
+http = "*"
+
+[build-dependencies]
+bindgen = "0.53.1"
