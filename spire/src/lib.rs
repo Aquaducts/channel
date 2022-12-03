@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use actix::{Actor, Context, Recipient};
 
+pub mod config;
 pub mod database;
 pub mod messages;
 pub mod models;
@@ -9,6 +10,7 @@ pub mod socket;
 
 pub struct Spire {
     pub connected_runners: HashMap<String, Recipient<messages::BaseMessage>>,
+    pub config: config::Config,
 }
 
 impl Spire {

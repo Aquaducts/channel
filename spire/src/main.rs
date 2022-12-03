@@ -5,7 +5,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use spiar::{
-    database::Database, messages::JobRequest, models::Runners, socket::SocketSession, Spire,
+    config::Config, database::Database, messages::JobRequest, models::Runners,
+    socket::SocketSession, Spire,
 };
 use std::{collections::HashMap, fs::read_to_string};
 
@@ -29,6 +30,7 @@ pub struct RunnerConfigFile {
 async fn create_ws_session(
     ws: web::Data<Addr<Spire>>,
     app: web::Data<RealApp>,
+    config: web::Data<Config>,
     params: web::Query<ConnectRequest>,
     req: HttpRequest,
     stream: web::Payload,
@@ -72,6 +74,7 @@ pub struct RequestJson {
 async fn queue_job_run(
     ws: web::Data<Addr<Spire>>,
     _app: web::Data<RealApp>,
+    config: web::Data<Config>,
     _req: HttpRequest,
     data: web::Json<RequestJson>,
     runner: web::Path<String>,
@@ -89,29 +92,37 @@ async fn queue_job_run(
     Ok(HttpResponse::Ok().finish())
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> Result<()> {
-    let database = Database::new("".to_string()).await?;
+    let config = std::fs::read_to_string("./Config.toml")?;
+    let config = toml::from_str::<Config>(&config)?;
+
+    let host_and_port = match config.clone().server {
+        Some(server) => (server.host, server.port),
+        None => ("0.0.0.0".to_string(), 8080),
+    };
+
+    let database = Database::new(config.database.to_string()).await?;
     database.migrate().await?;
 
     let websocket = web::Data::new(
         Spire {
             connected_runners: HashMap::new(),
+            config: config.clone(),
         }
         .start(),
     );
     let app = web::Data::new(RealApp { database });
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
             .service(create_ws_session)
             .service(queue_job_run)
             .app_data(websocket.clone())
             .app_data(app.clone())
-    })
-    .bind(("0.0.0.0", 8080))?
-    .run()
-    .await
-    .unwrap();
+            .app_data(config.clone())
+    });
+
+    server.bind(host_and_port)?.run().await.unwrap();
 
     Ok(())
 }
