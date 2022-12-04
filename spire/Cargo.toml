@@ -40,3 +40,5 @@ ring = "0.16.20"
 base64 = "0.13.1"
 hex = "0.4.3"
 toml = "0.5.9"
+bamboo-common = { path = "../bamboo-common" }
+async-trait = "*"

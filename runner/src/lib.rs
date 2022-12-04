@@ -6,6 +6,7 @@
 #![allow(clippy::unreadable_literal)]
 
 pub mod command;
+pub mod config;
 pub mod container;
 pub mod io;
 pub mod lxc {

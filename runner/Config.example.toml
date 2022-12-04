@@ -1,2 +1,5 @@
 password = "runner1234"
 name = "runner1"
+
+[spire]
+host = "localhost:8080"

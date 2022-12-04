@@ -1,7 +1,7 @@
-use crate::{socket::SocketSession, Spire};
+use crate::{models::Job, socket::SocketSession, Spire};
 use actix::{Context, Handler, Message, Recipient};
 use serde::{Deserialize, Serialize};
-use serde_json::to_string;
+use serde_json::{json, to_string};
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -59,14 +59,13 @@ impl Handler<Connect> for Spire {
 #[rtype(result = "()")]
 pub struct JobRequest {
     pub runner: String,
-    /// Uhm full url? or just like owner/name? idk for now ima just use the entire repo url.
-    pub repo: String,
+    pub job: Job,
 }
 
 impl Handler<JobRequest> for Spire {
     type Result = ();
 
     fn handle(&mut self, job_request: JobRequest, _ctx: &mut Self::Context) {
-        self.send_message(&to_string(&job_request).unwrap(), job_request.runner);
+        self.send_message(&to_string(&job_request.job).unwrap(), job_request.runner);
     }
 }

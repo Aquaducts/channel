@@ -5,13 +5,18 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use spiar::{
-    config::Config, database::Database, messages::JobRequest, models::Runners,
-    socket::SocketSession, Spire,
+    config::Config,
+    database::Database,
+    messages::JobRequest,
+    models::{Job, Runners},
+    socket::SocketSession,
+    Spire,
 };
-use std::{collections::HashMap, fs::read_to_string};
+use sqlx::FromRow;
+use std::{collections::HashMap, fs::read_to_string, sync::Arc};
 
 pub struct RealApp {
-    pub database: Database,
+    pub database: Arc<Database>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,6 +64,7 @@ async fn create_ws_session(
     let new_connection = SocketSession {
         app: ws.get_ref().clone(),
         runner: name,
+        database: app.database.clone(),
     };
     let resp = ws::start(new_connection, &req, stream)?;
     Ok(resp)
@@ -69,32 +75,66 @@ pub struct RequestJson {
     pub repo: String,
 }
 
-#[post("/runners/{runner}/run")]
+#[derive(Debug, FromRow, Clone)]
+pub struct JobCount(i64);
+
+pub async fn queue_job(
+    app: Arc<RealApp>,
+    ws: Arc<Addr<Spire>>,
+    _request: RequestJson,
+    runner: String,
+) -> Result<()> {
+    // do some repo magic when github notifications start to work.
+    let new_job = sqlx::query_as::<_, Job>(
+        r#"INSERT INTO job(assigned_runner, repo) VALUES($1, 1) RETURNING *"#,
+    )
+    .bind(&runner)
+    .fetch_one(&app.database.0)
+    .await?;
+
+    let all_possible_queued_jobs = sqlx::query_as::<_, JobCount>(
+        r#"SELECT count(*) FROM job WHERE status = 0 AND assigned_runner = $1"#,
+    )
+    .bind(&runner)
+    .fetch_one(&app.database.0)
+    .await?;
+
+    if all_possible_queued_jobs.0 <= 1 {
+        println!("sent");
+        ws.send(JobRequest {
+            runner,
+            job: new_job,
+        })
+        .await?;
+    }
+
+    Ok(())
+}
+
+#[post("/runners/{runner}/queue")]
 /// Queues a job for the specified runner.
 async fn queue_job_run(
     ws: web::Data<Addr<Spire>>,
     _app: web::Data<RealApp>,
-    config: web::Data<Config>,
+    _config: web::Data<Config>,
     _req: HttpRequest,
     data: web::Json<RequestJson>,
     runner: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
-    let result = ws
-        .send(JobRequest {
-            runner: runner.into_inner(),
-            repo: data.0.repo,
-        })
-        .await;
-    if result.is_err() {
-        // Make custom errors for all these message types.
-        return Ok(HttpResponse::InternalServerError().finish());
-    }
+    queue_job(
+        _app.into_inner(),
+        ws.into_inner(),
+        data.into_inner(),
+        runner.into_inner(),
+    )
+    .await
+    .unwrap();
     Ok(HttpResponse::Ok().finish())
 }
 
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> Result<()> {
-    let config = std::fs::read_to_string("./Config.toml")?;
+    let config = std::fs::read_to_string("./spire/Config.toml")?;
     let config = toml::from_str::<Config>(&config)?;
 
     let host_and_port = match config.clone().server {
@@ -112,17 +152,22 @@ async fn main() -> Result<()> {
         }
         .start(),
     );
-    let app = web::Data::new(RealApp { database });
-    let server = HttpServer::new(move || {
+    let config_data = web::Data::new(config.clone());
+    let app = web::Data::new(RealApp {
+        database: Arc::new(database),
+    });
+    HttpServer::new(move || {
         App::new()
             .service(create_ws_session)
             .service(queue_job_run)
             .app_data(websocket.clone())
             .app_data(app.clone())
-            .app_data(config.clone())
-    });
-
-    server.bind(host_and_port)?.run().await.unwrap();
+            .app_data(config_data.clone())
+    })
+    .bind(host_and_port)?
+    .run()
+    .await
+    .unwrap();
 
     Ok(())
 }

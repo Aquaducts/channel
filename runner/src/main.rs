@@ -1,7 +1,8 @@
 use anyhow::Result;
+use bamboo_common::{websocket::Messages, Job, Repos};
 use futures_util::{SinkExt, StreamExt};
 use haikunator::Haikunator;
-use runner::{container::Container, io::FakedIO, lxc};
+use runner::{config::Config, container::Container, io::FakedIO, lxc};
 use serde::__private::de::IdentifierDeserializer;
 use serde::{Deserialize, Serialize};
 use std::os::unix::io::AsRawFd;
@@ -76,41 +77,52 @@ async fn test_builder(build_request: BuildRequest) -> Result<()> {
     Ok(())
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JobRequest {
-    pub repo: String,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // use builder::buildrequest_capnp::build_request;
-    // test_builder(BuildRequest {
-    //     repo: String::from("https://github.com/ibx34/main-test-repo.git"),
-    //     branch: None,
-    //     name: None,
-    // })
-    // .await?;
+    let config = std::fs::read_to_string("./runner/Config.toml")?;
+    let config = toml::from_str::<Config>(&config)?;
 
-    let (ws_stream, _) =
-        connect_async(&"ws://localhost:8080/ws?name=runner1&password=runner1234".to_string())
-            .await
-            .unwrap();
+    let url = &format!(
+        "ws://{}/ws?name={}&password={}",
+        config.spire.host, config.name, config.password
+    );
+
+    let (ws_stream, _) = connect_async(url).await.unwrap();
 
     let (mut writer, mut read) = ws_stream.split();
 
     while let Some(msg) = read.next().await {
         let msg = msg?;
         if msg.is_text() || msg.is_binary() {
-            if let Ok(request) = serde_json::from_str::<JobRequest>(msg.to_text()?) {
-                if test_builder(BuildRequest {
-                    repo: request.repo,
-                    branch: None,
-                    name: None,
-                })
-                .await
-                .is_err()
-                {
-                    writer.send(Message::Text(String::from("WHAT"))).await?;
+            println!("{:?}", msg);
+            if let Ok(request) = serde_json::from_str::<Job>(msg.to_text()?) {
+                println!("HELLO");
+                // UHMM should the builder be requesting the job's repo through a websocket message? WHO KNOWS!
+                writer
+                    .send(Message::Text(serde_json::to_string(
+                        &Messages::GetJobRepo {
+                            job: request.id,
+                            repo: request.repo,
+                        },
+                    )?))
+                    .await?;
+
+                let Some(Ok(next_message)) = read.next().await else {
+                    panic!("OH NO IM PANICKING!!!");
+                };
+
+                if next_message.is_text() || next_message.is_binary() {
+                    let repo = serde_json::from_str::<Repos>(next_message.to_text()?)?;
+                    if test_builder(BuildRequest {
+                        repo: format!("https://github.com/{}/{}.git", repo.owner, repo.name),
+                        branch: None,
+                        name: None,
+                    })
+                    .await
+                    .is_err()
+                    {
+                        writer.send(Message::Text(String::from("WHAT"))).await?;
+                    }
                 }
             }
         }
