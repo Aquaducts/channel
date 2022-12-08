@@ -28,7 +28,7 @@ hyper = { version = "0.14.23", features = [
 ] }
 haikunator = "0.1.2"
 notify = { version = "5.0.0", features = ["serde"] }
-capnp = "0.15.1"
+capnp = "0.15.2"
 directories = "4.0.1"
 async-trait = "0.1.58"
 tokio-tungstenite = "0.17.2"
