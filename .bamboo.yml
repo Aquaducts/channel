@@ -32,6 +32,6 @@ pipes:
     steps:
       - name: "Move into project"
         run: "cd /bamboo"
-    
+
       - name: "Build runner"
         run: "cargo build --bin runner"
