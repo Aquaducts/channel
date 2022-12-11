@@ -14,8 +14,29 @@ pub struct Runners {
 pub struct Repos {
     pub id: i64,
     pub gh_id: i64,
+    pub install: i64,
     pub owner: String,
     pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, FromRow, Clone)]
+pub struct JobLog {
+    pub id: i64,
+    pub job: i64,
+    pub step: String,
+    pub status: i64,
+    pub output: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, FromRow, Clone)]
+/// From @ Github
+pub struct AccessToken {
+    pub token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, FromRow, Clone)]
+pub struct Installations {
+    pub id: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, FromRow, Clone)]
@@ -26,12 +47,5 @@ pub struct Job {
     pub repo: i64,
 }
 
-pub mod websocket {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Serialize, Deserialize, Debug, Clone)]
-    #[serde(untagged)]
-    pub enum Messages {
-        GetJobRepo { job: i64, repo: i64 },
-    }
-}
+pub mod ci_files;
+pub mod websocket;
