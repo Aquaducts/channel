@@ -26,12 +26,12 @@ pipes:
         run: "sh rust-init.sh -y"
 
   "build runner":
-    steps:
+    steps:        
       - name: "Move into project"
-        run: "cd /bamboo"
+        run: "bash -c cd /bamboo"
 
       - name: "Add cargo to current shell"
-        run: "source '/root/.cargo/env'"
+        run: "bash -c source '/root/.cargo/env'"
 
       - name: "Build runner"
-        run: "cargo"
+        run: "bash -c cargo"
