@@ -31,7 +31,7 @@ pipes:
         run: "bash -c 'cd /bamboo'"
 
       - name: "Add cargo to current shell"
-        run: "bash -c 'source '/root/.cargo/env\''"
+        run: "bash -c 'source '/root/.cargo/env''"
 
       - name: "Build runner"
         run: "bash -c 'cargo'"
