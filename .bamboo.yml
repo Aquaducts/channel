@@ -26,7 +26,7 @@ pipes:
         run: "sh rust-init.sh -y"
 
       - name: "Add cargo to current shell"
-        run: "source "$HOME/.cargo/env"
+        run: "source '$HOME/.cargo/env'"
 
   "build runner":
     steps:
