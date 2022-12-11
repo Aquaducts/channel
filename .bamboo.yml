@@ -1,35 +1,37 @@
 pipes:
-    "Install uhm uhm uhm uhm uhm uhm uhm uhm rust :pleading":
-        steps:
-            - name: "Update apk"
-              run: "apk update"
+  "Install uhm uhm uhm uhm uhm uhm uhm uhm rust :pleading":
+    steps:
+      - name: "Update apk"
+        run: "apk update"
 
-            - name: "Install curl"
-              run: "apk add curl"
+      - name: "Install curl"
+        run: "apk add curl"
 
-            - name: "Install gcc"
-              run: "apk add gcc"
+      - name: "Install gcc"
+        run: "apk add gcc"
 
-            - name: "Install uname"
-              run: "apk add coreutils"
+      - name: "Install uname"
+        run: "apk add coreutils"
 
-            - name: "Print path"
-              run: "echo $PATH"
+      - name: "Print path"
+        run: "echo $PATH"
 
-            - name: "Install rust"
-              run: "curl -sSf -o rust-init.sh https://sh.rustup.rs"
-            - name: "Install rust"
-              run: "chmod +x rust-init.sh"
-            - name: "Install rust"
-              run: "sh rust-init.sh -y"
+      - name: "Install rust"
+        run: "curl -sSf -o rust-init.sh https://sh.rustup.rs"
 
-            - name: "Add cargo to current shell"
-              run: "source "$HOME/.cargo/env"
+      - name: "Install rust"
+        run: "chmod +x rust-init.sh"
 
-    "build runner":
-        steps:
-            - name: "Move into project"
-              run: "cd /bamboo"
-          
-            - name: "Build runner"
-              run: "cargo build --bin runner"
+      - name: "Install rust"
+        run: "sh rust-init.sh -y"
+
+      - name: "Add cargo to current shell"
+        run: "source "$HOME/.cargo/env"
+
+  "build runner":
+    steps:
+      - name: "Move into project"
+        run: "cd /bamboo"
+    
+      - name: "Build runner"
+        run: "cargo build --bin runner"
