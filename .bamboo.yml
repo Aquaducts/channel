@@ -28,10 +28,7 @@ pipes:
   "build runner":
     steps:        
       - name: "Move into project"
-        run: "bash -c 'cd /bamboo'"
-
-      - name: "Add cargo to current shell"
-        run: "bash -c 'source '/root/.cargo/env''"
+        run: "cd /bamboo"
 
       - name: "Build runner"
-        run: "bash -c 'cargo'"
+        run: "bash -c 'source '/root/.cargo/env' && cargo'"
