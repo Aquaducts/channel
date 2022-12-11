@@ -31,7 +31,7 @@ pipes:
         run: "cd /bamboo"
 
       - name: "Add cargo to current shell"
-        run: "source '$HOME/.cargo/env'"
-        
+        run: "source '/root/.cargo/env'"
+
       - name: "Build runner"
         run: "cargo build --bin runner"
