@@ -1,19 +1,20 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use actix::{Actor, Context, Recipient};
+use actix::{Actor, Addr, Context, Recipient};
 
+pub mod api;
 pub mod config;
 pub mod database;
+pub mod github;
 pub mod messages;
 pub mod models;
 pub mod socket;
 
-pub struct Spire {
+pub struct Connections {
     pub connected_runners: HashMap<String, Recipient<messages::BaseMessage>>,
-    pub config: config::Config,
 }
 
-impl Spire {
+impl Connections {
     fn send_message(&self, message: &str, id_to: String) {
         if let Some(socket_recipient) = self.connected_runners.get(&id_to) {
             socket_recipient.do_send(messages::BaseMessage(message.to_owned()));
@@ -23,6 +24,16 @@ impl Spire {
     }
 }
 
-impl Actor for Spire {
+pub struct Spire {
+    pub connections: Addr<Connections>,
+    pub database: Arc<database::Database>,
+    pub config: config::Config,
+}
+
+impl Actor for Connections {
     type Context = Context<Self>;
+}
+
+pub struct RealApp {
+    pub database: Arc<database::Database>,
 }

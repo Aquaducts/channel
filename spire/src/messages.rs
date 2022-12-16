@@ -1,7 +1,8 @@
-use crate::{models::Job, socket::SocketSession, Spire};
+use crate::{models::Job, socket::SocketSession, Connections};
 use actix::{Context, Handler, Message, Recipient};
+use common::websocket::Messages;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, to_string};
+use serde_json::to_string;
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -21,7 +22,7 @@ pub struct Disconnect {
     pub runner: String,
 }
 
-impl Handler<Disconnect> for Spire {
+impl Handler<Disconnect> for Connections {
     type Result = Option<()>;
 
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> Self::Result {
@@ -39,7 +40,7 @@ pub struct Connect {
     pub runner: String,
 }
 
-impl Handler<Connect> for Spire {
+impl Handler<Connect> for Connections {
     type Result = Option<()>;
 
     fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> Self::Result {
@@ -62,10 +63,16 @@ pub struct JobRequest {
     pub job: Job,
 }
 
-impl Handler<JobRequest> for Spire {
+impl Handler<JobRequest> for Connections {
     type Result = ();
 
     fn handle(&mut self, job_request: JobRequest, _ctx: &mut Self::Context) {
-        self.send_message(&to_string(&job_request.job).unwrap(), job_request.runner);
+        self.send_message(
+            &to_string(&Messages::CreateJobRun {
+                job: job_request.job,
+            })
+            .unwrap(),
+            job_request.runner,
+        );
     }
 }

@@ -40,5 +40,9 @@ ring = "0.16.20"
 base64 = "0.13.1"
 hex = "0.4.3"
 toml = "0.5.9"
-bamboo-common = { path = "../bamboo-common" }
+common = { path = "../common" }
 async-trait = "*"
+jsonwebtoken = "8.2.0"
+openssl = "0.10.43"
+reqwest = { version = "0.11.13", features = ["rustls-tls-native-roots"] }
+actix-files = "0.6.2"
