@@ -111,28 +111,6 @@ async fn test_builder(
                 fake_io.clear().await?;
             }
         }
-
-        // for step in pipe.steps {
-        //     println!("[{name}] [{:?}] [{}]", step.name, step.run);
-        //     let step_name = step.name;
-        //     let join = fake_io
-        //         .watch(
-        //             sender.clone(),
-        //             step_name.as_ref().unwrap().to_string(),
-        //             Some(name.to_string()),
-        //         )
-        //         .await;
-
-        //     if let Some(name) = step_name {
-        //         println!("* On step: {name}");
-        //     }
-        //     println!(
-        //         "Command Status: {}",
-        //         container.exec(step.run.try_into()?, &mut attach_options)
-        //     );
-        //     join.abort();
-        //     fake_io.clear().await?;
-        // }
     }
 
     container.stop()?;
