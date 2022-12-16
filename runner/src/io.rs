@@ -1,20 +1,15 @@
 use anyhow::Result;
 
-use bamboo_common::websocket::Messages;
-use futures_util::{
-    SinkExt,
-};
+use common::websocket::Messages;
+use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
 use std::{fs::create_dir, io::SeekFrom, path::Path};
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncBufReadExt, AsyncSeekExt, BufReader},
-    sync::{
-        mpsc::{Sender},
-    },
+    sync::mpsc::Sender,
     task::JoinHandle,
 };
-
 
 pub async fn create_temp_file(builder: &str, file: &str) -> Result<File> {
     if !Path::new("/tmp/bamboo").exists() {
@@ -97,7 +92,7 @@ impl FakedIO {
                     let mut buf = String::new();
                     _ = stdout_bufreader.read_line(&mut buf).await;
                     if !buf.is_empty() {
-                        println!("OUT {buf:?}");
+                        println!("OUT [{:?}] [{}] {buf:?}", pipe, step);
                         sender
                             .send(Messages::CreateJobLog {
                                 job,

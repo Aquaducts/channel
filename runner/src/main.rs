@@ -1,9 +1,7 @@
 use anyhow::Result;
-use bamboo_common::{ci_files::OverallFile, websocket::Messages};
+use common::{websocket::Messages, RepoConfig, Step};
 
 use futures_util::{SinkExt, StreamExt};
-
-
 
 use runner::{config::Config, container::Container, io::FakedIO, lxc};
 use serde::__private::de::IdentifierDeserializer;
@@ -16,10 +14,8 @@ use tokio::io::AsyncBufReadExt;
 
 use tokio::sync::mpsc::{self, Sender};
 
-
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BuildRequest {
@@ -31,7 +27,7 @@ pub struct BuildRequest {
 async fn test_builder(
     job: i64,
     build_request: BuildRequest,
-    config: OverallFile,
+    config: RepoConfig,
     runner_conf: &Config,
     sender: Sender<Messages>,
 ) -> Result<()> {
@@ -93,27 +89,50 @@ async fn test_builder(
 
     // Run the uhm uhm uhm freaking uhm steps
 
-    let pipes = config.pipes.into_iter();
-    for (name, pipe) in pipes {
+    let spurs = config.spurs.into_iter();
+    for spur in spurs {
         // send to the server that we are running X pioe ... TODO
 
-        for step in pipe.steps {
-            let step_name = step.name;
-            let join = fake_io
-                .watch(
-                    sender.clone(),
-                    step_name.as_ref().unwrap().to_string(),
-                    Some(name.to_string()),
-                )
-                .await;
+        // UPDATE this lol
+        println!("{:?}", spur);
+        for step in spur.steps {
+            if let Ok(step) = serde_json::from_value::<Step>(step) {
+                println!("[{name}] [{:?}] [{}]", step.name, step.run);
+                let step_name = step.name;
+                let join = fake_io
+                    .watch(sender.clone(), step_name, Some(spur.name.to_string()))
+                    .await;
 
-            if let Some(name) = step_name {
-                println!("* On step: {name}");
+                println!(
+                    "Command Status: {}",
+                    container.exec(step.run.try_into()?, &mut attach_options)
+                );
+                join.abort();
+                fake_io.clear().await?;
             }
-            container.exec(step.run.try_into()?, &mut attach_options);
-            join.abort();
-            fake_io.clear().await?;
         }
+
+        // for step in pipe.steps {
+        //     println!("[{name}] [{:?}] [{}]", step.name, step.run);
+        //     let step_name = step.name;
+        //     let join = fake_io
+        //         .watch(
+        //             sender.clone(),
+        //             step_name.as_ref().unwrap().to_string(),
+        //             Some(name.to_string()),
+        //         )
+        //         .await;
+
+        //     if let Some(name) = step_name {
+        //         println!("* On step: {name}");
+        //     }
+        //     println!(
+        //         "Command Status: {}",
+        //         container.exec(step.run.try_into()?, &mut attach_options)
+        //     );
+        //     join.abort();
+        //     fake_io.clear().await?;
+        // }
     }
 
     container.stop()?;
@@ -136,8 +155,8 @@ async fn main() -> anyhow::Result<()> {
     let (writer, reader) = (Arc::new(Mutex::new(writer)), Arc::new(Mutex::new(read)));
 
     // Create the channels for reading and writing to the ws
-    let (writer_sender, mut writer_recv) = mpsc::channel::<Messages>(100);
-    let (main_sender, mut main_recv) = mpsc::channel::<Messages>(100);
+    let (writer_sender, mut writer_recv) = mpsc::channel::<Messages>(200);
+    let (main_sender, mut main_recv) = mpsc::channel::<Messages>(200);
 
     let locked_reader = reader.clone();
     let reader = tokio::spawn(async move {
@@ -181,13 +200,11 @@ async fn main() -> anyhow::Result<()> {
                 .await
                 .unwrap();
 
-            let Some(Messages::RepoConfig(_config)) = main_recv.recv().await else {
-                println!("Failed to get repo config.");
+            let get_repo_cfg = main_recv.recv().await;
+            let Some(Messages::RepoConfig(_config)) = get_repo_cfg else {
+                println!("Failed to get repo config. {:?}", get_repo_cfg);
                 continue;
             };
-
-            println!("* Using config file:\n{_config}\n----\n");
-            let config_file = serde_yaml::from_str::<OverallFile>(&_config).unwrap();
 
             // Get job's repo
             writer_sender
@@ -239,7 +256,7 @@ async fn main() -> anyhow::Result<()> {
                     repo_owner: repo.owner,
                     branch: None,
                 },
-                config_file,
+                _config,
                 &config,
                 tx,
             )
@@ -253,7 +270,8 @@ async fn main() -> anyhow::Result<()> {
                         status: 2,
                     })
                     .await
-                    .unwrap()
+                    .unwrap();
+                continue;
             }
             writer_sender
                 .send(Messages::UpdateJobStatus {

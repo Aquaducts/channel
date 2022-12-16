@@ -36,7 +36,7 @@ futures-util = "*"
 futures-channel = "*"
 http = "*"
 toml = "0.5.9"
-bamboo-common = { path = "../bamboo-common" }
+common = { path = "../common" }
 reqwest = { version = "0.11.13", features = ["rustls-tls-native-roots"] }
 jsonwebtoken = "8.2.0"
 chrono = { version = "0.4.19", features = ["serde"] }
