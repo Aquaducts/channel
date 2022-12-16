@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Job, Repos};
+use crate::{Job, RepoConfig, Repos};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -15,7 +15,7 @@ pub enum Messages {
     GetRepoConfig {
         repo: i64,
     },
-    RepoConfig(String),
+    RepoConfig(RepoConfig),
     Repo(Repos),
     CreateJobLog {
         job: i64,

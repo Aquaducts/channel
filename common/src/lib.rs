@@ -50,5 +50,23 @@ pub struct Job {
     pub end: Option<NaiveDateTime>,
 }
 
-pub mod ci_files;
+#[derive(Serialize, Deserialize, Debug, FromRow, Clone)]
+pub struct Spurs {
+    pub id: i64,
+    pub owned_by: i64,
+    pub name: String,
+    pub steps: Vec<serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Step {
+    pub name: String,
+    pub run: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RepoConfig {
+    pub spurs: Vec<Spurs>,
+}
+
 pub mod websocket;
