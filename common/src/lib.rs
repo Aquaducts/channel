@@ -1,6 +1,22 @@
+pub mod database;
+pub mod websocket;
+
+use std::{future::Future, pin::Pin};
+
+use actix::Addr;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::sync::Arc;
+
+#[repr(C)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PluginInfo {
+    pub name: String,
+    pub owner: String,
+    pub events: Vec<String>,
+    pub main_file: String,
+}
 
 #[derive(Serialize, Deserialize, Debug, FromRow, Clone)]
 pub struct Runners {
@@ -68,5 +84,3 @@ pub struct Step {
 pub struct RepoConfig {
     pub spurs: Vec<Spurs>,
 }
-
-pub mod websocket;
