@@ -35,7 +35,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketSession {
                         } => {
                             let database = self.database.clone();
                             let fut = async move {
-                                sqlx::query::<_>(
+                                println!("{:?}", sqlx::query::<_>(
                                     r#"INSERT INTO job_logs(job, step, status, output, pipe) VALUES($1,$2,$3,$4,$5)"#,
                                 )
                                 .bind(job)
@@ -44,7 +44,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketSession {
                                 .bind(&output)
                                 .bind(&pipe)
                                 .execute(&database.0)
-                                .await.unwrap();
+                                .await.unwrap());
                             };
 
                             fut.into_actor(self).spawn(ctx);

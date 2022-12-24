@@ -15,7 +15,7 @@ use spiar::{
         github::manage_new_install,
         jobs::{get_job_logs, get_repo_jobs},
     },
-    config::Config,
+    config::CONFIG,
     database::Database,
     messages::JobRequest,
     models::{Job, Repos, Runners},
@@ -198,15 +198,12 @@ async fn github_webhook(
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-    let config = std::fs::read_to_string("./spire/Config.toml")?;
-    let config = toml::from_str::<Config>(&config)?;
-
-    let host_and_port = match config.clone().server {
+    let host_and_port = match CONFIG.to_owned().server {
         Some(server) => (server.host, server.port),
         None => ("0.0.0.0".to_string(), 8080),
     };
 
-    let database = Database::new(config.database.to_string()).await?;
+    let database = Database::new(CONFIG.to_owned().database).await?;
     database.migrate().await?;
 
     let app = web::Data::new(Spire {
@@ -215,7 +212,6 @@ async fn main() -> Result<()> {
         }
         .start(),
         database: Arc::new(database),
-        config: config.clone(),
     });
 
     HttpServer::new(move || {

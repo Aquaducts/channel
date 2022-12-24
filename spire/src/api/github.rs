@@ -7,7 +7,7 @@ use actix_web::{
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::{github::GithubApp, Spire};
+use crate::{config::CONFIG, github::GithubApp, Spire};
 
 // TODO: move all request models to one file
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,7 +29,7 @@ async fn manage_new_install(
     params: web::Query<NewInstall>,
     _req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
-    let gh_config = app.config.github.clone();
+    let gh_config = CONFIG.github.clone();
     let gh_app = GithubApp::new(gh_config.app_id, gh_config.key_path);
 
     let access_token = gh_app

@@ -1,12 +1,13 @@
 use anyhow::{bail, Result};
 
-use sqlx::{migrate::Migrator, postgres::PgPoolOptions, Pool, Postgres};
-use std::path::PathBuf;
+use sqlx::{migrate::Migrator, postgres::PgPoolOptions, Pool, Postgres, Transaction};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tokio::sync::Mutex;
 
 pub struct Database(pub Pool<Postgres>);
 
 impl Database {
-    pub async fn new(dsn: String) -> Result<Self> {
+    pub async fn new(dsn: String) -> Result<Database> {
         let database = PgPoolOptions::new()
             .max_connections(150)
             .connect(&dsn)

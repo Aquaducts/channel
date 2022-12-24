@@ -4,10 +4,11 @@ use actix::{Actor, Addr, Context, Recipient};
 
 pub mod api;
 pub mod config;
-pub mod database;
+pub use common::database;
 pub mod github;
 pub mod messages;
 pub mod models;
+pub mod plugins;
 pub mod socket;
 
 pub struct Connections {
@@ -27,13 +28,8 @@ impl Connections {
 pub struct Spire {
     pub connections: Addr<Connections>,
     pub database: Arc<database::Database>,
-    pub config: config::Config,
 }
 
 impl Actor for Connections {
     type Context = Context<Self>;
-}
-
-pub struct RealApp {
-    pub database: Arc<database::Database>,
 }
