@@ -53,7 +53,6 @@ impl Command {
         let mut argv = argv.iter().map(|e| e.as_ptr()).collect::<Vec<*const i8>>();
 
         argv.push(null());
-        println!("{:?}", self.program.as_str());
 
         unsafe {
             (*container).attach_run_wait.unwrap()(

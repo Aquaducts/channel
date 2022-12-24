@@ -81,7 +81,6 @@ impl FakedIO {
         let sender = sender;
         let job = self.job;
         tokio::spawn(async move {
-            println!("Started.");
             let _fake_io = FakedIO::create(builder_name, job).await.unwrap();
             let mut stdout_bufreader = BufReader::new(_fake_io.stdout);
             let mut stderr_bufreader = BufReader::new(_fake_io.stderr);
@@ -92,7 +91,6 @@ impl FakedIO {
                     let mut buf = String::new();
                     _ = stdout_bufreader.read_line(&mut buf).await;
                     if !buf.is_empty() {
-                        println!("OUT [{:?}] [{}] {buf:?}", pipe, step);
                         sender
                             .send(Messages::CreateJobLog {
                                 job,
@@ -113,7 +111,7 @@ impl FakedIO {
                     let mut buf = String::new();
                     _ = stderr_bufreader.read_line(&mut buf).await;
                     if !buf.is_empty() {
-                        println!("ERR: {:?}", buf);
+                        continue;
                     }
                 }
             }

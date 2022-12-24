@@ -34,8 +34,6 @@ async fn test_builder(
     let parsed = build_request;
     let name = format!("{}-{}", runner_conf.name, job);
 
-    println!("Got build request -- {}", name);
-
     let container = Container::new(name.clone())?;
     _ = container.start();
 
@@ -94,7 +92,6 @@ async fn test_builder(
         // send to the server that we are running X pioe ... TODO
 
         // UPDATE this lol
-        println!("{:?}", spur);
         for step in spur.steps {
             if let Ok(step) = serde_json::from_value::<Step>(step) {
                 println!("[{name}] [{:?}] [{}]", step.name, step.run);
@@ -103,10 +100,6 @@ async fn test_builder(
                     .watch(sender.clone(), step_name, Some(spur.name.to_string()))
                     .await;
 
-                println!(
-                    "Command Status: {}",
-                    container.exec(step.run.try_into()?, &mut attach_options)
-                );
                 join.abort();
                 fake_io.clear().await?;
             }
@@ -210,8 +203,6 @@ async fn main() -> anyhow::Result<()> {
                     pipe,
                 }) = rx.recv().await
                 {
-                    println!("Create log");
-
                     ws_sender
                         .send(Messages::CreateJobLog {
                             job,
@@ -222,8 +213,6 @@ async fn main() -> anyhow::Result<()> {
                         })
                         .await
                         .unwrap();
-
-                    println!("h");
                 }
             });
 
