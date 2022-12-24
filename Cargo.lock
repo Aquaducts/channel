@@ -589,7 +589,7 @@ checksum = "fe6837df1d5cba2397b835c8530f51723267e16abbf83892e9e5af4f0e5dd10a"
 dependencies = [
  "glob",
  "libc",
- "libloading",
+ "libloading 0.5.2",
 ]
 
 [[package]]
@@ -621,6 +621,8 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "actix",
+ "anyhow",
  "chrono",
  "serde",
  "serde_json",
@@ -1462,6 +1464,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2b111a074963af1d37a139918ac6d49ad1d0d5e47f72fd55388619691a7d753"
 dependencies = [
  "cc",
+ "winapi",
+]
+
+[[package]]
+name = "libloading"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
+dependencies = [
+ "cfg-if 1.0.0",
  "winapi",
 ]
 
@@ -2447,6 +2459,9 @@ dependencies = [
  "git2",
  "hex",
  "jsonwebtoken",
+ "lazy_static",
+ "libloading 0.7.4",
+ "once_cell",
  "openssl",
  "reqwest",
  "ring",
@@ -2456,6 +2471,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "toml",
+ "walkdir",
 ]
 
 [[package]]
