@@ -1,0 +1,8 @@
+{
+    "main_file": "curator.so",
+    "name": "Default job curator for Channel",
+    "owner": "ibx34",
+    "events": [
+        "job_create"
+    ]
+}
