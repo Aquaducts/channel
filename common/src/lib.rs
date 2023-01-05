@@ -10,7 +10,7 @@ use sqlx::FromRow;
 use std::sync::Arc;
 
 #[repr(C)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginInfo {
     pub name: String,
     pub owner: String,

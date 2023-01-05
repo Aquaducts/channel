@@ -1,0 +1,8 @@
+database = "..."
+
+# Runners, by default, will try to connect to the server on the following port and host.
+# If you change these make sure to update all your runners too.
+# TODO: When a dashboard is made, maybe have a function to mass update all runners?
+[server]
+port = 8080
+host = "0.0.0.0"

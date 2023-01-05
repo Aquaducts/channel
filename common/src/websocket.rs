@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Job, RepoConfig, Repos};
 
+#[repr(C)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Messages {
