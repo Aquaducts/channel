@@ -30,5 +30,5 @@ pub struct Config {
 }
 
 pub const CONFIG: Lazy<Config> = Lazy::new(|| {
-    toml::from_str::<Config>(&std::fs::read_to_string("./spire/Config.toml").unwrap()).unwrap()
+    toml::from_str::<Config>(&std::fs::read_to_string("./server/Config.toml").unwrap()).unwrap()
 });
