@@ -165,27 +165,6 @@ async fn queue_job_run(
     Ok(HttpResponse::Ok().finish())
 }
 
-// #[derive(Serialize, Deserialize, Debug)]
-// pub struct _GitUser {
-//     pub name: String,
-//     pub email: String,
-//     pub username: String
-// }
-
-// #[derive(Serialize, Deserialize, Debug)]
-// pub struct Commit {
-//     pub id: String,
-//     pub tree_id: String,
-//     pub distinct: bool,
-//     pub message: String,
-//     pub timestamp: String,
-//     pub url: String,
-//     pub author: _GitUser,
-//     pub committer: _GitUser,
-//     pub added: Vec<String>,
-//     pub removed: Vec<String>,
-//     pub modified: Vec<String>
-// }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct _Repository {
@@ -195,18 +174,6 @@ pub struct _Repository {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PushEvent {
     pub repository: _Repository,
-    // pub before: String,
-    // pub after: String,
-    // pub pusher: GitUser,
-    // pub organization: Option<Organization>,
-    // pub sender: User,
-    // pub created: bool,
-    // pub deleted: bool,
-    // pub forced: bool,
-    // pub base_ref: Option<String>,
-    // pub compare: String,
-    // pub commits: Vec<Commit>,
-    // pub head_commit: Commit
 }
 
 #[post("webhook")]
@@ -255,6 +222,11 @@ async fn github_webhook(
 
 #[actix_web::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+    .with_max_level(tracing::Level::INFO)
+    .pretty()
+    .init();
+    
     let host_and_port = match CONFIG.to_owned().server {
         Some(server) => (server.host, server.port),
         None => ("0.0.0.0".to_string(), 8080),
