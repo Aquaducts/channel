@@ -23,6 +23,9 @@ struct Claims {
     iat: i64,
 }
 
+// TODO: The new errors struct will be added here when I end up
+// refactoring this code. It needs it.
+
 #[get("/new_install")]
 async fn manage_new_install(
     app: web::Data<Spire>,

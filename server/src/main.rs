@@ -1,10 +1,10 @@
 use actix::Actor;
 
+use actix_cors::Cors;
 use actix_web::{
     get, post,
-    web::scope,
     web::{self},
-    App, Error, HttpRequest, HttpResponse, HttpServer,
+    App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use actix_web_actors::ws;
 use anyhow::Result;
@@ -15,15 +15,15 @@ use serde::{Deserialize, Serialize};
 use spiar::{
     api::{
         github::manage_new_install,
-        jobs::{get_job_logs, get_repo_jobs},
+        jobs::{get_jobs, get_specific_job},
     },
     config::CONFIG,
     database::Database,
     messages::JobRequest,
     models::{Job, Repos, Runners},
-    plugins::PLUGINS,
     socket::SocketSession,
     Connections, Spire,
+    errors::Error
 };
 use sqlx::FromRow;
 use std::{collections::HashMap, fs::read_to_string, pin::Pin, sync::Arc};
@@ -40,68 +40,31 @@ pub struct RunnerConfigFile {
     pub password: Option<String>,
 }
 
-#[get("/repos")]
-async fn get_repos(app: web::Data<Spire>, _req: HttpRequest) -> Result<HttpResponse, Error> {
-    let Ok(repos) = sqlx::query_as::<_, common::Repos>(r#"SELECT * FROM repos"#)
-    .fetch_all(&app.database.0)
-    .await else {
-        return Ok(HttpResponse::InternalServerError().finish());
-    };
-
-    let mut html = String::from(
-        r#"
-    <!DOCTYPE html>
-    <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta http-equiv="X-UA-Compatible" content="IE=edge">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Document</title>
-        </head>
-        <body>
-         <ul>
-         
-    "#,
-    );
-
-    for repo in repos {
-        html.push_str(&format!(
-            r#"<li><a href="/jobs/{id}">[{id}] - {}/{}</a></li>"#,
-            repo.owner,
-            repo.name,
-            id = repo.id
-        ))
-    }
-    html.push_str("</ul></body></html>");
-
-    Ok(HttpResponse::Ok().body(html))
-}
-
 #[get("/ws")]
 async fn create_ws_session(
     ws: web::Data<Spire>,
     params: web::Query<ConnectRequest>,
     req: HttpRequest,
     stream: web::Payload,
-) -> Result<HttpResponse, Error> {
+) -> Result<impl Responder, Error> {
     let (name, password) = (params.0.name, params.0.password);
     let Ok(possible_runner) = sqlx::query_as::<_, Runners>(r#"SELECT * FROM runners WHERE name = $1"#)
         .bind(&name)
         .fetch_one(&ws.database.0)
         .await else {
-            println!("L");
-            return Ok(HttpResponse::InternalServerError().finish());
+            return Err(Error::internal_server_error("Failed to get runner from the database."));
         };
 
     let Ok(config_file) = read_to_string(format!("{}/Config.toml", possible_runner.local_path)) else {
-        return Ok(HttpResponse::InternalServerError().finish());
+        return Err(Error::internal_server_error("Failed to read runner config file."));
     };
     let Ok(deserialized) = toml::from_str::<RunnerConfigFile>(&config_file) else {
-        return Ok(HttpResponse::InternalServerError().finish());
+        return Err(Error::internal_server_error("Failed to parse runner config file."));
     };
     if let Some(runner_pass) = deserialized.password {
         if password != runner_pass {
-            return Ok(HttpResponse::Forbidden().finish());
+            // not sure if forbidden is the correct code here
+            return Err(Error::forbidden("Passwords do not match"));
         }
     }
 
@@ -110,7 +73,8 @@ async fn create_ws_session(
         runner: name,
         database: ws.database.clone(),
     };
-    let resp = ws::start(new_connection, &req, stream)?;
+    // fix
+    let resp = ws::start(new_connection, &req, stream).unwrap();
     Ok(resp)
 }
 
@@ -187,7 +151,7 @@ async fn queue_job_run(
     _req: HttpRequest,
     data: web::Json<RequestJson>,
     runner: web::Path<String>,
-) -> Result<HttpResponse, Error> {
+) -> Result<impl Responder, Error> {
     let repo_info = data.into_inner();
     queue_job(
         ws.into_inner(),
@@ -197,8 +161,7 @@ async fn queue_job_run(
         runner.into_inner(),
         true,
     )
-    .await
-    .unwrap();
+    .await.unwrap();
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -251,21 +214,21 @@ async fn github_webhook(
     app: web::Data<Spire>,
     _req: HttpRequest,
     data: web::Json<serde_json::Value>,
-) -> Result<HttpResponse, Error> {
+) -> Result<impl Responder, Error> {
     let payload = data.into_inner();
     if let Ok(payload) = serde_json::from_value::<PushEvent>(payload) {
         let Ok(repo) = sqlx::query_as::<_, spiar::models::Repos>(r#"SELECT * FROM repos WHERE gh_id = ($1)"#).bind(&payload.repository.id).fetch_one(&app.database.0).await else {
-            return Ok(HttpResponse::BadRequest().finish())
+            return Err(Error::bad_request("Requested repo is not configured."));
         };
 
-        // TODO: Cache
+        // TODO: Cache runners
         let Ok(runners) = sqlx::query_as::<_, spiar::models::Runners>(r#"SELECT * FROM runners"#).fetch_all(&app.database.0).await else {
-            return Ok(HttpResponse::BadRequest().finish())
+            return Err(Error::internal_server_error("Failed to get the runners"));
         };
 
         for runner in runners {
             let Ok(jobs) = sqlx::query_as::<_, spiar::models::Job>(r#"SELECT * FROM job WHERE assigned_runner = $1 AND status IN (0,1)"#).bind(&runner.name).fetch_all(&app.database.0).await else {
-                return Ok(HttpResponse::InternalServerError().finish());
+                return Err(Error::internal_server_error("Failed to get a job."));
             };
 
             if jobs.len() <= 0 {
@@ -292,7 +255,6 @@ async fn github_webhook(
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-    let _ = PLUGINS;
     let host_and_port = match CONFIG.to_owned().server {
         Some(server) => (server.host, server.port),
         None => ("0.0.0.0".to_string(), 8080),
@@ -311,16 +273,16 @@ async fn main() -> Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(Cors::permissive())
             .service(
-                scope("api")
+                web::scopescope("api")
                     .service(manage_new_install)
                     .service(create_ws_session)
                     .service(queue_job_run),
             )
             .service(github_webhook)
-            .service(get_repos)
-            .service(get_repo_jobs)
-            .service(get_job_logs)
+            .service(get_jobs)
+            .service(get_specific_job)
             .app_data(app.clone())
     })
     .bind(host_and_port)?

@@ -10,6 +10,7 @@ pub mod messages;
 pub mod models;
 pub mod plugins;
 pub mod socket;
+pub mod errors;
 
 pub struct Connections {
     pub connected_runners: HashMap<String, Recipient<messages::BaseMessage>>,
