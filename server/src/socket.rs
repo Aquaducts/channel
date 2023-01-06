@@ -2,7 +2,6 @@ use crate::{
     database::Database,
     messages::{BaseMessage, Connect, Disconnect, JobRequest},
     models::{Job, Repos},
-    plugins::{LogCreateFunc, Plugin, PluginType, PLUGINS},
     Connections,
 };
 use actix::{

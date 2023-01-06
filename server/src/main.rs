@@ -8,9 +8,7 @@ use actix_web::{
 };
 use actix_web_actors::ws;
 use anyhow::Result;
-use octocrab::models::{
-    events::payload::PushEventPayload, orgs::Organization, repos::GitUser, User,
-};
+
 use serde::{Deserialize, Serialize};
 use spiar::{
     api::{
@@ -19,11 +17,11 @@ use spiar::{
     },
     config::CONFIG,
     database::Database,
+    errors::Error,
     messages::JobRequest,
     models::{Job, Repos, Runners},
     socket::SocketSession,
     Connections, Spire,
-    errors::Error
 };
 use sqlx::FromRow;
 use std::{collections::HashMap, fs::read_to_string, pin::Pin, sync::Arc};
@@ -161,10 +159,10 @@ async fn queue_job_run(
         runner.into_inner(),
         true,
     )
-    .await.unwrap();
+    .await
+    .unwrap();
     Ok(HttpResponse::Ok().finish())
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct _Repository {
@@ -184,7 +182,7 @@ async fn github_webhook(
 ) -> Result<impl Responder, Error> {
     let payload = data.into_inner();
     if let Ok(payload) = serde_json::from_value::<PushEvent>(payload) {
-        let Ok(repo) = sqlx::query_as::<_, spiar::models::Repos>(r#"SELECT * FROM repos WHERE gh_id = ($1)"#).bind(&payload.repository.id).fetch_one(&app.database.0).await else {
+        let Ok(repo) = sqlx::query_as::<_, spiar::models::Repos>(r#"SELECT * FROM repos WHERE gh_id = ($1)"#).bind(payload.repository.id).fetch_one(&app.database.0).await else {
             return Err(Error::bad_request("Requested repo is not configured."));
         };
 
@@ -223,10 +221,10 @@ async fn github_webhook(
 #[actix_web::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-    .with_max_level(tracing::Level::INFO)
-    .pretty()
-    .init();
-    
+        .with_max_level(tracing::Level::INFO)
+        .pretty()
+        .init();
+
     let host_and_port = match CONFIG.to_owned().server {
         Some(server) => (server.host, server.port),
         None => ("0.0.0.0".to_string(), 8080),

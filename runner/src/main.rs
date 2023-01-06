@@ -46,7 +46,7 @@ async fn test_builder(
         initial_cwd: null_mut(),
         uid: 0,
         gid: 0,
-        env_policy: lxc::lxc_attach_env_policy_t_LXC_ATTACH_CLEAR_ENV as u32,
+        env_policy: lxc::lxc_attach_env_policy_t_LXC_ATTACH_CLEAR_ENV,
         extra_env_vars: null_mut(),
         extra_keep_env: null_mut(),
         log_fd: fake_io.stdout.as_raw_fd(),

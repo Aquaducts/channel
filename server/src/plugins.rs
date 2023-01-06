@@ -1,10 +1,10 @@
-use crate::config::CONFIG;
+
 pub use common::{database::Database, websocket::Messages, PluginInfo};
-use common::{Job, JobLog};
+use common::{Job};
 use futures::Future;
 use libloading::Library;
 use once_cell::sync::Lazy;
-use std::{fs::read_to_string, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 
 pub type JobCreateFunc =
     unsafe extern "C" fn(Arc<Database>, Job) -> Pin<Box<dyn Future<Output = ()>>>;
@@ -25,7 +25,7 @@ pub struct Plugin {
 }
 
 pub const PLUGINS: once_cell::sync::Lazy<Vec<Plugin>> = Lazy::new(|| {
-    let mut plugins = Vec::new();
+    
     // TODO: uhm fix this path
     // let config = CONFIG.to_owned();
 
@@ -78,5 +78,5 @@ pub const PLUGINS: once_cell::sync::Lazy<Vec<Plugin>> = Lazy::new(|| {
     //     }
     // }
 
-    plugins
+    Vec::new()
 });

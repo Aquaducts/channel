@@ -24,12 +24,16 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_jobs_paginated(&self, page: Option<i64>, per_page: Option<i64>) -> Result<Vec<Job>> {
+    pub async fn get_jobs_paginated(
+        &self,
+        page: Option<i64>,
+        per_page: Option<i64>,
+    ) -> Result<Vec<Job>> {
         let page = if page.is_none() || page.unwrap() == 1 {
             // From my testing I think its better to just return 0 for the first page and limit it by the per_page option..
             0
         } else {
-            page.unwrap() * per_page.unwrap_or(5) 
+            page.unwrap() * per_page.unwrap_or(5)
         };
         let jobs =
             sqlx::query_as::<_, Job>(r#"SELECT * FROM job WHERE id > $1 ORDER BY id ASC LIMIT $2"#)

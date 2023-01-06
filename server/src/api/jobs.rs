@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
+    errors::Error,
     models::{Job, Repos},
     Spire,
-    errors::Error
 };
 
 #[derive(Serialize, Deserialize)]
@@ -35,8 +35,10 @@ async fn get_jobs(
         .await
     {
         Ok(jobs) => jobs,
-        Err(err) => {
-            return Err(Error::internal_server_error(String::from("Failed to get jobs related to your search.")));
+        Err(_) => {
+            return Err(Error::internal_server_error(String::from(
+                "Failed to get jobs related to your search.",
+            )));
         }
     };
     Ok(HttpResponse::Ok().json(jobs))
