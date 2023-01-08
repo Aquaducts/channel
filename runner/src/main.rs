@@ -1,5 +1,9 @@
-use anyhow::Result;
-use common::{websocket::Messages, RepoConfig, Step};
+use anyhow::{bail, Result};
+use common::{
+    events::Identify,
+    websocket::{Messages, OpCodes, WebsocketMessage},
+    Job, RepoConfig, Step,
+};
 
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
@@ -11,12 +15,15 @@ use tokio::net::TcpStream;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
+use std::boxed::Box;
 use std::os::unix::io::AsRawFd;
+use std::process::exit;
 use std::ptr::null_mut;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use tracing::info;
 
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -118,19 +125,19 @@ pub struct WebsocketConnection {
     _reader: Arc<Mutex<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>>,
     _writer: Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>,
     /// Messages sent through this are read using the `internal_reader` struct.
-    internal_readers_writer: Sender<Messages>,
+    internal_readers_writer: Sender<WebsocketMessage>,
     /// Messages sent though `internal_writer` are consumed with this in the
     /// main writer's loop.
-    internal_writers_reader: Arc<Mutex<Receiver<Messages>>>,
+    internal_writers_reader: Arc<Mutex<Receiver<WebsocketMessage>>>,
     /// Used in the main event loop to recieve messages from the isolated reader.
     /// We can't use the reader in other places (to my knowledge) so this channel
     /// is created to recieve stuff from the websocket in other places, not just the main
     /// reader loop.
-    pub internal_reader: Arc<Mutex<Receiver<Messages>>>,
+    pub reader: Arc<Mutex<Receiver<WebsocketMessage>>>,
     /// Used in throughout the code to send messages back to the server through the main writer.
     /// The main writer (writer field on this struct) should not be used because messages sent from
     /// some places in the code may not make it through. Use this instead.
-    pub internal_writer: Sender<Messages>,
+    pub writer: Sender<WebsocketMessage>,
 }
 
 impl WebsocketConnection {
@@ -142,17 +149,17 @@ impl WebsocketConnection {
 
         let (ws_stream, _) = connect_async(url).await?;
 
-        let (writer, read) = ws_stream.split();
-        let (_writer, _reader) = (Arc::new(Mutex::new(writer)), Arc::new(Mutex::new(read)));
+        let (_writer, _reader) = ws_stream.split();
+        let (_writer, _reader) = (Arc::new(Mutex::new(_writer)), Arc::new(Mutex::new(_reader)));
 
-        let (internal_writer, internal_writers_reader) = mpsc::channel::<Messages>(200);
-        let (internal_readers_writer, internal_reader) = mpsc::channel::<Messages>(200);
+        let (internal_writer, internal_writers_reader) = mpsc::channel::<WebsocketMessage>(200);
+        let (internal_readers_writer, internal_reader) = mpsc::channel::<WebsocketMessage>(200);
 
         Ok(Self {
             _writer,
             _reader,
-            internal_reader: Arc::new(Mutex::new(internal_reader)),
-            internal_writer,
+            reader: Arc::new(Mutex::new(internal_reader)),
+            writer: internal_writer,
             internal_readers_writer,
             internal_writers_reader: Arc::new(Mutex::new(internal_writers_reader)),
         })
@@ -167,7 +174,8 @@ impl WebsocketConnection {
             while let Some(msg) = locked_reader.next().await {
                 let msg = msg.unwrap();
                 if msg.is_text() || msg.is_binary() {
-                    if let Ok(message) = serde_json::from_str::<Messages>(&msg.into_text().unwrap())
+                    if let Ok(message) =
+                        serde_json::from_str::<WebsocketMessage>(&msg.into_text().unwrap())
                     {
                         outside_code_sender.send(message).await.unwrap();
                     }
@@ -195,6 +203,57 @@ impl WebsocketConnection {
 
 pub struct Runner {
     pub websocket: WebsocketConnection,
+    pub current_job: Option<Job>,
+    pub repo_cfg: Option<RepoConfig>,
+}
+
+impl Runner {
+    pub async fn new() -> Result<Self> {
+        let websocket = WebsocketConnection::create().await?;
+        Ok(Runner {
+            websocket,
+            current_job: None,
+            repo_cfg: None,
+        })
+    }
+
+    pub async fn identify(&self) -> Result<()> {
+        Ok(self
+            .websocket
+            .writer
+            .send(WebsocketMessage {
+                op: OpCodes::Identify,
+                event: Some(Box::new(Identify {
+                    name: CONFIG.name.to_owned(),
+                    password: CONFIG.password.to_owned(),
+                })),
+            })
+            .await?)
+    }
+
+    pub async fn get_repo_cfg(&self) -> Result<()> {
+        let Some(current_job) = &self.current_job else {
+            bail!("Called when there is job being ran.");
+        };
+
+        // Ok(self
+        //     .websocket
+        //     .writer
+        //     .send(Messages::GetRepoConfig {
+        //         repo: current_job.repo,
+        //     })
+        //     .await?)
+        Ok(())
+    }
+
+    pub async fn listen(&self) -> Result<()> {
+        let mut internal_reader = self.websocket.reader.lock().await;
+        while let Some(to_write) = internal_reader.recv().await {
+            println!("{:?}", to_write);
+            println!("{:?}", internal_reader.recv().await)
+        }
+        Ok(())
+    }
 }
 
 #[tokio::main]
@@ -204,9 +263,22 @@ async fn main() -> anyhow::Result<()> {
         .pretty()
         .init();
 
-    let ws = WebsocketConnection::create().await?;
-    let reader = ws.start_reader().await?;
-    let writer = ws.start_writer().await?;
+    info!("Creating runner and connecting to server.");
+    let runner = Runner::new().await?;
+
+    let reader = runner.websocket.start_reader().await?;
+    let writer = runner.websocket.start_writer().await?;
+
+    //runner.identify().await?;
+
+    ctrlc::set_handler(move || {
+        info!("Peacefully shutting down runner...");
+        writer.abort();
+        reader.abort();
+
+        exit(0);
+    })?;
+
     // let config = std::fs::read_to_string("./runner/Config.toml")?;
     // let config = toml::from_str::<Config>(&config)?;
 
@@ -255,11 +327,7 @@ async fn main() -> anyhow::Result<()> {
     //     }
     // });
 
-    let mut internal_reader = ws.internal_reader.lock().await;
-    while let Some(to_write) = internal_reader.recv().await {
-        println!("{:?}", to_write);
-        println!("{:?}", internal_reader.recv().await)
-    }
+    return Ok(runner.listen().await?);
     //     if let Messages::CreateJobRun { job } = to_write {
     //         writer_sender
     //             .send(Messages::UpdateJobStatus {
@@ -353,8 +421,4 @@ async fn main() -> anyhow::Result<()> {
     //             .unwrap()
     //     }
     // }
-
-    writer.abort();
-    reader.abort();
-    Ok(())
 }

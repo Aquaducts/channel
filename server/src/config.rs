@@ -32,3 +32,7 @@ pub struct Config {
 pub const CONFIG: Lazy<Config> = Lazy::new(|| {
     toml::from_str::<Config>(&std::fs::read_to_string("./server/Config.toml").unwrap()).unwrap()
 });
+// seconds
+pub const HEARTBEAT_INTERVAL: u64 = 10;
+// seconds
+pub const CLIENT_TIMEOUT: u64 = 10;

@@ -18,13 +18,13 @@ use spiar::{
     config::CONFIG,
     database::Database,
     errors::Error,
-    messages::JobRequest,
+    messages::{JobRequest, NewAndImprovedMessage},
     models::{Job, Repos, Runners},
     socket::SocketSession,
     Connections, Spire,
 };
 use sqlx::FromRow;
-use std::{collections::HashMap, fs::read_to_string, pin::Pin, sync::Arc};
+use std::{collections::HashMap, fs::read_to_string, pin::Pin, sync::Arc, time::Instant};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConnectRequest {
@@ -70,6 +70,8 @@ async fn create_ws_session(
         app: Pin::new(&ws.connections).get_ref().clone(),
         runner: name,
         database: ws.database.clone(),
+        heartbeat: Instant::now(),
+        identified: false,
     };
     // fix
     let resp = ws::start(new_connection, &req, stream).unwrap();
@@ -111,12 +113,12 @@ pub async fn queue_job(
     .await?;
 
     if !guard_against_queue {
-        ws.connections
-            .send(JobRequest {
-                runner,
-                job: new_job,
-            })
-            .await?;
+        // ws.connections
+        //     .send(JobRequest {
+        //         runner,
+        //         job: new_job,
+        //     })
+        //     .await?;
         return Ok(());
     }
 
@@ -129,12 +131,17 @@ pub async fn queue_job(
 
     if all_possible_queued_jobs.0 <= 1 {
         println!("sent");
-        ws.connections
-            .send(JobRequest {
-                runner,
-                job: new_job,
-            })
-            .await?;
+        // ws.connections
+        //     .send(NewAndImprovedMessage(
+        //         String::from("runner1"),
+        //         common::websocket::WebsocketMessage {
+        //             op: common::websocket::OpCodes::Hello,
+        //             event: Some(Box::new(common::websocket::Hello {
+        //                 fake: String::from("HI"),
+        //             })),
+        //         },
+        //     ))
+        //     .await?;
     }
 
     Ok(())

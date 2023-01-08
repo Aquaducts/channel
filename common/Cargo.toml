@@ -21,3 +21,5 @@ serde = { version = "1.0.147", features = ["derive"] }
 chrono = { version = "0.4.19", features = ["serde"] }
 anyhow = "1.0.66"
 actix = "0.13.0"
+erased-serde = "0.3.24"
+typetag = "0.2.4"
