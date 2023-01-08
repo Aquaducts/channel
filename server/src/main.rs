@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use spiar::{
     api::{
         github::manage_new_install,
-        jobs::{get_jobs, get_specific_job},
+        jobs::{get_specific_job, job_search},
     },
     config::CONFIG,
     database::Database,
@@ -251,7 +251,7 @@ async fn main() -> Result<()> {
                     .service(queue_job_run),
             )
             .service(github_webhook)
-            .service(get_jobs)
+            .service(job_search)
             .service(get_specific_job)
             .app_data(app.clone())
     })

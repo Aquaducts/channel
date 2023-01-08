@@ -2324,6 +2324,7 @@ dependencies = [
  "hyper",
  "jsonwebtoken",
  "notify",
+ "once_cell",
  "openssl",
  "reqwest",
  "serde",
@@ -2332,6 +2333,8 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "toml",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
