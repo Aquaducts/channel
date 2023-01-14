@@ -1,18 +1,29 @@
-use anyhow::Result;
-use common::{websocket::Messages, RepoConfig, Step};
+use anyhow::{bail, Result};
+use common::{
+    events::Identify,
+    websocket::{Messages, OpCodes, WebsocketMessage},
+    Job, RepoConfig, Step,
+};
 
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-
+use runner::config::CONFIG;
 use runner::{config::Config, container::Container, io::FakedIO, lxc};
 use serde::__private::de::IdentifierDeserializer;
 use serde::{Deserialize, Serialize};
+use tokio::net::TcpStream;
+use tokio::task::JoinHandle;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
+use std::boxed::Box;
 use std::os::unix::io::AsRawFd;
+use std::process::exit;
 use std::ptr::null_mut;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tracing::info;
 
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -110,147 +121,304 @@ async fn test_builder(
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = std::fs::read_to_string("./runner/Config.toml")?;
-    let config = toml::from_str::<Config>(&config)?;
+pub struct WebsocketConnection {
+    _reader: Arc<Mutex<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>>,
+    _writer: Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>,
+    /// Messages sent through this are read using the `internal_reader` struct.
+    internal_readers_writer: Sender<WebsocketMessage>,
+    /// Messages sent though `internal_writer` are consumed with this in the
+    /// main writer's loop.
+    internal_writers_reader: Arc<Mutex<Receiver<WebsocketMessage>>>,
+    /// Used in the main event loop to recieve messages from the isolated reader.
+    /// We can't use the reader in other places (to my knowledge) so this channel
+    /// is created to recieve stuff from the websocket in other places, not just the main
+    /// reader loop.
+    pub reader: Arc<Mutex<Receiver<WebsocketMessage>>>,
+    /// Used in throughout the code to send messages back to the server through the main writer.
+    /// The main writer (writer field on this struct) should not be used because messages sent from
+    /// some places in the code may not make it through. Use this instead.
+    pub writer: Sender<WebsocketMessage>,
+}
 
-    let url = &format!(
-        "ws://{}/api/ws?name={}&password={}",
-        config.spire.host, config.name, config.password
-    );
+impl WebsocketConnection {
+    pub async fn create() -> Result<Self> {
+        let url = &format!(
+            "ws://{}/api/ws?name={}&password={}",
+            CONFIG.spire.host, CONFIG.name, CONFIG.password
+        );
 
-    let (ws_stream, _) = connect_async(url).await.unwrap();
+        let (ws_stream, _) = connect_async(url).await?;
 
-    let (writer, read) = ws_stream.split();
-    let (writer, reader) = (Arc::new(Mutex::new(writer)), Arc::new(Mutex::new(read)));
+        let (_writer, _reader) = ws_stream.split();
+        let (_writer, _reader) = (Arc::new(Mutex::new(_writer)), Arc::new(Mutex::new(_reader)));
 
-    // Create the channels for reading and writing to the ws
-    let (writer_sender, mut writer_recv) = mpsc::channel::<Messages>(200);
-    let (main_sender, mut main_recv) = mpsc::channel::<Messages>(200);
+        let (internal_writer, internal_writers_reader) = mpsc::channel::<WebsocketMessage>(200);
+        let (internal_readers_writer, internal_reader) = mpsc::channel::<WebsocketMessage>(200);
 
-    let locked_reader = reader.clone();
-    let reader = tokio::spawn(async move {
-        let mut locked_reader = locked_reader.lock().await;
-
-        while let Some(msg) = locked_reader.next().await {
-            let msg = msg.unwrap();
-            if msg.is_text() || msg.is_binary() {
-                if let Ok(message) = serde_json::from_str::<Messages>(&msg.into_text().unwrap()) {
-                    main_sender.send(message).await.unwrap();
-                }
-            }
-        }
-    });
-
-    let locked_write = writer.clone();
-    let writer = tokio::spawn(async move {
-        let mut locked_write = locked_write.lock().await;
-
-        while let Some(to_write) = writer_recv.recv().await {
-            locked_write
-                .send(Message::Text(serde_json::to_string(&to_write).unwrap()))
-                .await
-                .unwrap();
-        }
-    });
-
-    while let Some(to_write) = main_recv.recv().await {
-        if let Messages::CreateJobRun { job } = to_write {
-            writer_sender
-                .send(Messages::UpdateJobStatus {
-                    job: job.id,
-                    status: 1,
-                })
-                .await
-                .unwrap();
-
-            // Get repo file
-            writer_sender
-                .send(Messages::GetRepoConfig { repo: job.repo })
-                .await
-                .unwrap();
-
-            let get_repo_cfg = main_recv.recv().await;
-            let Some(Messages::RepoConfig(_config)) = get_repo_cfg else {
-                println!("Failed to get repo config. {:?}", get_repo_cfg);
-                continue;
-            };
-
-            // Get job's repo
-            writer_sender
-                .send(Messages::GetJobRepo {
-                    job: job.id,
-                    repo: job.repo,
-                })
-                .await
-                .unwrap();
-
-            let Some(Messages::Repo(repo)) = main_recv.recv().await else {
-                println!("Failed to get repo.");
-                continue;
-            };
-
-            let (tx, mut rx) = mpsc::channel::<Messages>(100);
-
-            let ws_sender = writer_sender.clone();
-            let join = tokio::spawn(async move {
-                while let Some(Messages::CreateJobLog {
-                    job,
-                    status,
-                    step,
-                    output,
-                    pipe,
-                }) = rx.recv().await
-                {
-                    ws_sender
-                        .send(Messages::CreateJobLog {
-                            job,
-                            status,
-                            step,
-                            output,
-                            pipe,
-                        })
-                        .await
-                        .unwrap();
-                }
-            });
-
-            let output = test_builder(
-                job.id,
-                BuildRequest {
-                    repo_name: repo.name,
-                    repo_owner: repo.owner,
-                    branch: None,
-                },
-                _config,
-                &config,
-                tx,
-            )
-            .await;
-            join.abort();
-
-            if output.is_err() {
-                writer_sender
-                    .send(Messages::UpdateJobStatus {
-                        job: job.id,
-                        status: 2,
-                    })
-                    .await
-                    .unwrap();
-                continue;
-            }
-            writer_sender
-                .send(Messages::UpdateJobStatus {
-                    job: job.id,
-                    status: 3,
-                })
-                .await
-                .unwrap()
-        }
+        Ok(Self {
+            _writer,
+            _reader,
+            reader: Arc::new(Mutex::new(internal_reader)),
+            writer: internal_writer,
+            internal_readers_writer,
+            internal_writers_reader: Arc::new(Mutex::new(internal_writers_reader)),
+        })
     }
 
-    writer.abort();
-    reader.abort();
-    Ok(())
+    pub async fn start_reader(&self) -> Result<JoinHandle<()>> {
+        let locked_reader = self._reader.clone();
+        let outside_code_sender = self.internal_readers_writer.clone();
+        Ok(tokio::spawn(async move {
+            let mut locked_reader = locked_reader.lock().await;
+
+            while let Some(msg) = locked_reader.next().await {
+                let msg = msg.unwrap();
+                if msg.is_text() || msg.is_binary() {
+                    if let Ok(message) =
+                        serde_json::from_str::<WebsocketMessage>(&msg.into_text().unwrap())
+                    {
+                        outside_code_sender.send(message).await.unwrap();
+                    }
+                }
+            }
+        }))
+    }
+
+    pub async fn start_writer(&self) -> Result<JoinHandle<()>> {
+        let locked_write = self._writer.clone();
+        let outside_code_reader = self.internal_writers_reader.clone();
+        Ok(tokio::spawn(async move {
+            let mut locked_write = locked_write.lock().await;
+            let mut locked_outside_code_reader = outside_code_reader.lock().await;
+
+            while let Some(to_write) = locked_outside_code_reader.recv().await {
+                locked_write
+                    .send(Message::Text(serde_json::to_string(&to_write).unwrap()))
+                    .await
+                    .unwrap();
+            }
+        }))
+    }
+}
+
+pub struct Runner {
+    pub websocket: WebsocketConnection,
+    pub current_job: Option<Job>,
+    pub repo_cfg: Option<RepoConfig>,
+}
+
+impl Runner {
+    pub async fn new() -> Result<Self> {
+        let websocket = WebsocketConnection::create().await?;
+        Ok(Runner {
+            websocket,
+            current_job: None,
+            repo_cfg: None,
+        })
+    }
+
+    pub async fn identify(&self) -> Result<()> {
+        Ok(self
+            .websocket
+            .writer
+            .send(WebsocketMessage {
+                op: OpCodes::Identify,
+                event: Some(Box::new(Identify {
+                    name: CONFIG.name.to_owned(),
+                    password: CONFIG.password.to_owned(),
+                })),
+            })
+            .await?)
+    }
+
+    pub async fn get_repo_cfg(&self) -> Result<()> {
+        let Some(current_job) = &self.current_job else {
+            bail!("Called when there is job being ran.");
+        };
+
+        // Ok(self
+        //     .websocket
+        //     .writer
+        //     .send(Messages::GetRepoConfig {
+        //         repo: current_job.repo,
+        //     })
+        //     .await?)
+        Ok(())
+    }
+
+    pub async fn listen(&self) -> Result<()> {
+        let mut internal_reader = self.websocket.reader.lock().await;
+        while let Some(to_write) = internal_reader.recv().await {
+            println!("{:?}", to_write);
+            println!("{:?}", internal_reader.recv().await)
+        }
+        Ok(())
+    }
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .pretty()
+        .init();
+
+    info!("Creating runner and connecting to server.");
+    let runner = Runner::new().await?;
+
+    let reader = runner.websocket.start_reader().await?;
+    let writer = runner.websocket.start_writer().await?;
+
+    //runner.identify().await?;
+
+    ctrlc::set_handler(move || {
+        info!("Peacefully shutting down runner...");
+        writer.abort();
+        reader.abort();
+
+        exit(0);
+    })?;
+
+    // let config = std::fs::read_to_string("./runner/Config.toml")?;
+    // let config = toml::from_str::<Config>(&config)?;
+
+    // let url = &format!(
+    //     "ws://{}/api/ws?name={}&password={}",
+    //     config.spire.host, config.name, config.password
+    // );
+
+    // let (ws_stream, _) = connect_async(url).await.unwrap();
+
+    // let (writer, read) = ws_stream.split();
+    // let (writer, reader) = (Arc::new(Mutex::new(writer)), Arc::new(Mutex::new(read)));
+
+    // // // Create the channels for reading and writing to the ws
+
+    // // writer_recv = used in the writer loop to listen for stuff that should be sent back to the server
+    // // writer_sender = what is used throughout the code to send something back to the server
+    // // main_sender = what the reader loop uses to send stuff to the rest of the runner code
+    // // main_recv = what the runner code uses to recieve events like build requests
+    // let (writer_sender, mut writer_recv) = mpsc::channel::<Messages>(200);
+    // let (main_sender, mut main_recv) = mpsc::channel::<Messages>(200);
+
+    // let locked_reader = reader.clone();
+    // let reader = tokio::spawn(async move {
+    //     let mut locked_reader = locked_reader.lock().await;
+
+    //     while let Some(msg) = locked_reader.next().await {
+    //         let msg = msg.unwrap();
+    //         if msg.is_text() || msg.is_binary() {
+    //             if let Ok(message) = serde_json::from_str::<Messages>(&msg.into_text().unwrap()) {
+    //                 main_sender.send(message).await.unwrap();
+    //             }
+    //         }
+    //     }
+    // });
+
+    // let locked_write = writer.clone();
+    // let writer = tokio::spawn(async move {
+    //     let mut locked_write = locked_write.lock().await;
+
+    //     while let Some(to_write) = writer_recv.recv().await {
+    //         locked_write
+    //             .send(Message::Text(serde_json::to_string(&to_write).unwrap()))
+    //             .await
+    //             .unwrap();
+    //     }
+    // });
+
+    return Ok(runner.listen().await?);
+    //     if let Messages::CreateJobRun { job } = to_write {
+    //         writer_sender
+    //             .send(Messages::UpdateJobStatus {
+    //                 job: job.id,
+    //                 status: 1,
+    //             })
+    //             .await
+    //             .unwrap();
+
+    //         // Get repo file
+    //         writer_sender
+    //             .send(Messages::GetRepoConfig { repo: job.repo })
+    //             .await
+    //             .unwrap();
+
+    //         let get_repo_cfg = main_recv.recv().await;
+    //         let Some(Messages::RepoConfig(_config)) = get_repo_cfg else {
+    //             println!("Failed to get repo config. {:?}", get_repo_cfg);
+    //             continue;
+    //         };
+
+    //         // Get job's repo
+    //         writer_sender
+    //             .send(Messages::GetJobRepo {
+    //                 job: job.id,
+    //                 repo: job.repo,
+    //             })
+    //             .await
+    //             .unwrap();
+
+    //         let Some(Messages::Repo(repo)) = main_recv.recv().await else {
+    //             println!("Failed to get repo.");
+    //             continue;
+    //         };
+
+    //         let (tx, mut rx) = mpsc::channel::<Messages>(100);
+
+    //         let ws_sender = writer_sender.clone();
+    //         let join = tokio::spawn(async move {
+    //             while let Some(Messages::CreateJobLog {
+    //                 job,
+    //                 status,
+    //                 step,
+    //                 output,
+    //                 pipe,
+    //             }) = rx.recv().await
+    //             {
+    //                 ws_sender
+    //                     .send(Messages::CreateJobLog {
+    //                         job,
+    //                         status,
+    //                         step,
+    //                         output,
+    //                         pipe,
+    //                     })
+    //                     .await
+    //                     .unwrap();
+    //             }
+    //         });
+
+    //         let output = test_builder(
+    //             job.id,
+    //             BuildRequest {
+    //                 repo_name: repo.name,
+    //                 repo_owner: repo.owner,
+    //                 branch: None,
+    //             },
+    //             _config,
+    //             &config,
+    //             tx,
+    //         )
+    //         .await;
+    //         join.abort();
+
+    //         if output.is_err() {
+    //             writer_sender
+    //                 .send(Messages::UpdateJobStatus {
+    //                     job: job.id,
+    //                     status: 2,
+    //                 })
+    //                 .await
+    //                 .unwrap();
+    //             continue;
+    //         }
+    //         writer_sender
+    //             .send(Messages::UpdateJobStatus {
+    //                 job: job.id,
+    //                 status: 3,
+    //             })
+    //             .await
+    //             .unwrap()
+    //     }
+    // }
 }

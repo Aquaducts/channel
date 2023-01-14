@@ -2,9 +2,7 @@
 
 pub mod database;
 pub mod websocket;
-
-
-
+pub mod events;
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};

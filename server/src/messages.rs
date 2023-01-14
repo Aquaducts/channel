@@ -1,8 +1,23 @@
-use crate::{models::Job, socket::SocketSession, Connections};
+use crate::{config::HEARTBEAT_INTERVAL, models::Job, socket::SocketSession, Connections};
 use actix::{Context, Handler, Message, Recipient};
-use common::websocket::Messages;
+use common::websocket::{Messages, WebsocketMessage};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
+use std::boxed::Box;
+
+#[derive(Message)]
+#[rtype(result = "Option<()>")]
+pub struct NewAndImprovedMessage(pub String, pub WebsocketMessage);
+
+impl Handler<NewAndImprovedMessage> for Connections {
+    type Result = Option<()>;
+
+    fn handle(&mut self, msg: NewAndImprovedMessage, ctx: &mut Context<Self>) -> Self::Result {
+        println!("{:?}", msg.1);
+        self.send_message(&to_string(&msg.1).unwrap(), msg.0);
+        Some(())
+    }
+}
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -51,7 +66,16 @@ impl Handler<Connect> for Connections {
         }
 
         self.connected_runners.insert(msg.runner.clone(), msg.addr);
-        self.send_message(&format!("Hi builder: {}", msg.runner), msg.runner);
+        self.send_message(
+            &to_string(&common::websocket::WebsocketMessage {
+                op: common::websocket::OpCodes::Hello,
+                event: Some(Box::new(common::events::Hello {
+                    heartbeat: HEARTBEAT_INTERVAL,
+                })),
+            })
+            .unwrap(),
+            msg.runner,
+        );
         Some(())
     }
 }
