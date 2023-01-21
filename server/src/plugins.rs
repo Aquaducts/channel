@@ -1,6 +1,5 @@
-
+use common::Job;
 pub use common::{database::Database, websocket::Messages, PluginInfo};
-use common::{Job};
 use futures::Future;
 use libloading::Library;
 use once_cell::sync::Lazy;
@@ -25,7 +24,6 @@ pub struct Plugin {
 }
 
 pub const PLUGINS: once_cell::sync::Lazy<Vec<Plugin>> = Lazy::new(|| {
-    
     // TODO: uhm fix this path
     // let config = CONFIG.to_owned();
 
