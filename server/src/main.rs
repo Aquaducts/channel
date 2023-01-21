@@ -26,52 +26,18 @@ use spiar::{
 use sqlx::FromRow;
 use std::{collections::HashMap, fs::read_to_string, pin::Pin, sync::Arc, time::Instant};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConnectRequest {
-    pub name: String,
-    pub password: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RunnerConfigFile {
-    pub name: String,
-    pub password: Option<String>,
-}
-
 #[get("/ws")]
 async fn create_ws_session(
     ws: web::Data<Spire>,
-    params: web::Query<ConnectRequest>,
     req: HttpRequest,
     stream: web::Payload,
 ) -> Result<impl Responder, Error> {
-    let (name, password) = (params.0.name, params.0.password);
-    let Ok(possible_runner) = sqlx::query_as::<_, Runners>(r#"SELECT * FROM runners WHERE name = $1"#)
-        .bind(&name)
-        .fetch_one(&ws.database.0)
-        .await else {
-            return Err(Error::internal_server_error("Failed to get runner from the database."));
-        };
-
-    let Ok(config_file) = read_to_string(format!("{}/Config.toml", possible_runner.local_path)) else {
-        return Err(Error::internal_server_error("Failed to read runner config file."));
-    };
-    let Ok(deserialized) = toml::from_str::<RunnerConfigFile>(&config_file) else {
-        return Err(Error::internal_server_error("Failed to parse runner config file."));
-    };
-    if let Some(runner_pass) = deserialized.password {
-        if password != runner_pass {
-            // not sure if forbidden is the correct code here
-            return Err(Error::forbidden("Passwords do not match"));
-        }
-    }
-
     let new_connection = SocketSession {
         app: Pin::new(&ws.connections).get_ref().clone(),
-        runner: name,
+        runner: None,
         database: ws.database.clone(),
         heartbeat: Instant::now(),
-        identified: false,
+        identified: Arc::new(std::sync::Mutex::new(false)),
     };
     // fix
     let resp = ws::start(new_connection, &req, stream).unwrap();
@@ -113,12 +79,15 @@ pub async fn queue_job(
     .await?;
 
     if !guard_against_queue {
-        // ws.connections
-        //     .send(JobRequest {
-        //         runner,
-        //         job: new_job,
-        //     })
-        //     .await?;
+        ws.connections
+            .send(NewAndImprovedMessage(
+                runner,
+                common::websocket::WebsocketMessage {
+                    op: common::websocket::OpCodes::EventCreate,
+                    event: Some(Box::new(common::events::CreateJobRun { job: new_job })),
+                },
+            ))
+            .await?;
         return Ok(());
     }
 
@@ -130,18 +99,15 @@ pub async fn queue_job(
     .await?;
 
     if all_possible_queued_jobs.0 <= 1 {
-        println!("sent");
-        // ws.connections
-        //     .send(NewAndImprovedMessage(
-        //         String::from("runner1"),
-        //         common::websocket::WebsocketMessage {
-        //             op: common::websocket::OpCodes::Hello,
-        //             event: Some(Box::new(common::websocket::Hello {
-        //                 fake: String::from("HI"),
-        //             })),
-        //         },
-        //     ))
-        //     .await?;
+        ws.connections
+            .send(NewAndImprovedMessage(
+                runner,
+                common::websocket::WebsocketMessage {
+                    op: common::websocket::OpCodes::EventCreate,
+                    event: Some(Box::new(common::events::CreateJobRun { job: new_job })),
+                },
+            ))
+            .await?;
     }
 
     Ok(())
