@@ -1,13 +1,12 @@
 //! HII!
 
 pub mod database;
-pub mod websocket;
 pub mod events;
+pub mod websocket;
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-
 
 #[repr(C)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
