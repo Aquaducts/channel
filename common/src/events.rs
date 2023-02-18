@@ -25,7 +25,7 @@ pub struct Hello {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Identify {
     pub name: String,
-    pub password: String,
+    pub token: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
