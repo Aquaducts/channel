@@ -20,7 +20,7 @@ pub enum OpCodes {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WebsocketMessage {
     pub op: OpCodes,
-    pub event: Option<Box<dyn WebsocketEvent>>,
+    pub event: Option<Box<dyn WebsocketEvent + Send + Sync>>,
 }
 
 #[typetag::serde]
