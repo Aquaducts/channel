@@ -17,14 +17,14 @@ pub enum OpCodes {
     HeartBeatAck = 4,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct WebsocketMessage {
     pub op: OpCodes,
     pub event: Option<Box<dyn WebsocketEvent + Send + Sync>>,
 }
 
 #[typetag::serde]
-pub trait WebsocketEvent: erased_serde::Serialize + Debug + Send + Sync {
+pub trait WebsocketEvent: erased_serde::Serialize + Debug + Send + Sync + Clone {
     fn as_any(&self) -> &dyn Any;
 }
 
