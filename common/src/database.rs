@@ -3,7 +3,8 @@ use anyhow::{bail, Result};
 use sqlx::{migrate::Migrator, postgres::PgPoolOptions, Pool, Postgres};
 use std::path::PathBuf;
 
-#[repr(C, Clone)]
+#[repr(C)]
+#[derive(Clone)]
 pub struct Database(pub Pool<Postgres>);
 
 impl Database {
