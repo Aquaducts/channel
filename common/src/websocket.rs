@@ -24,7 +24,7 @@ pub struct WebsocketMessage {
 }
 
 #[typetag::serde]
-pub trait WebsocketEvent: erased_serde::Serialize + Debug + Send + Sync + Clone {
+pub trait WebsocketEvent: erased_serde::Serialize + Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
 }
 
