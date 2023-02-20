@@ -21,7 +21,21 @@ pub struct PluginInfo {
 pub struct Runners {
     pub name: String,
     pub id: i64,
-    pub local_path: String,
+    #[serde(skip_serializing)]
+    pub token: String,
+    pub remote_host: Option<std::net::IpAddr>,
+    pub remote_user: Option<String>,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Serialize, Deserialize, Debug, FromRow, Clone)]
+pub struct Credentials {
+    pub id: i64,
+    pub passphrase: Option<String>,
+    #[serde(skip_serializing)]
+    pub private_key: String,
+    pub name: String,
+    pub description: Option<String>,
     pub created_at: NaiveDateTime,
 }
 
