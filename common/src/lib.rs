@@ -43,7 +43,7 @@ pub struct Credentials {
 pub struct Repos {
     pub id: i64,
     pub gh_id: i64,
-    pub install: i64,
+    pub install: Option<i64>,
     pub owner: String,
     pub name: String,
 }
